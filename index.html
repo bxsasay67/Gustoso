@@ -135,7 +135,7 @@ label{display:flex;flex-direction:column;gap:.45rem;font-size:.74rem;letter-spac
 label.full,form .btn,#bookResult{grid-column:1/-1}
 input,select{font:400 1rem var(--body);color:var(--flour);background:var(--char);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;width:100%;min-width:0;letter-spacing:0;text-transform:none}
 input:focus,select:focus{border-color:var(--gold);outline:none}
-#bookResult{border:1px solid var(--gold);border-radius:8px;padding:1.1rem 1.2rem;font-size:.95rem}
+#bookResult{border:1px solid var(--gold);border-radius:8px;padding:1.1rem 1.2rem;font-size:.95rem;display:flex;flex-direction:column;gap:.8rem;align-items:flex-start}
 #bookResult strong{color:var(--gold);font-weight:500}
 @media (max-width:820px){.book .wrap{grid-template-columns:1fr;gap:2rem}}
 @media (max-width:480px){form{grid-template-columns:1fr}}
@@ -242,7 +242,7 @@ input:focus,select:focus{border-color:var(--gold);outline:none}
             <option>1 personne</option><option selected>2 personnes</option><option>3 personnes</option><option>4 personnes</option><option>5 personnes</option><option>6 personnes</option><option>7 personnes ou plus</option>
           </select>
         </label>
-        <button class="btn btn-fire" type="submit">Préparer ma réservation</button>
+        <button class="btn btn-fire" type="submit">Envoyer ma réservation</button>
         <p id="bookResult" role="status" hidden></p>
       </form>
     </div>
@@ -290,7 +290,19 @@ document.getElementById('bookForm').addEventListener('submit', function (e) {
   var s = document.createElement('strong');
   s.textContent = name + ', ' + guests + ', ' + nice + ' à ' + time.replace(':', ' h ') + '.';
   out.appendChild(s);
-  out.appendChild(document.createTextNode(' Appelez-nous au 077 983 32 23 pour confirmer votre table.'));
+  var phone = document.getElementById('bPhone').value.trim();
+  var message = 'Bonjour Gustoso, je souhaite réserver une table.\n' +
+    'Nom : ' + name + '\n' + 'Date : ' + nice + '\n' + 'Heure : ' + time + '\n' + 'Convives : ' + guests +
+    (phone ? '\nTéléphone : ' + phone : '');
+  var url = 'sms:+41783251686?&body=' + encodeURIComponent(message);
+  var note = document.createElement('span');
+  note.textContent = 'Vos messages s\'ouvrent avec votre demande : touchez « Envoyer » pour nous la transmettre. Vous pouvez aussi nous appeler au 077 983 32 23.';
+  out.appendChild(note);
+  var link = document.createElement('a');
+  link.className = 'btn btn-fire'; link.href = url;
+  link.textContent = 'Envoyer par message';
+  out.appendChild(link);
+  try { window.location.href = url; } catch (err) {}
 });
 
 // In-page links scroll by script, so they work in every viewer.
