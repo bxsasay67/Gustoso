@@ -267,11 +267,11 @@
 
           <p id="resaError" class="hidden text-sm text-ember"></p>
 
-          <button type="submit" data-cursor="SMS" class="group relative w-full overflow-hidden rounded-full bg-ember py-4 text-xs uppercase tracking-[0.25em] text-ink">
+          <button type="submit" data-cursor="Réserver" class="group relative w-full overflow-hidden rounded-full bg-ember py-4 text-xs uppercase tracking-[0.25em] text-ink">
             <span class="relative z-10">Confirmer ma réservation</span>
             <span class="absolute inset-0 translate-y-full bg-brass transition-transform duration-500 ease-expo group-hover:translate-y-0"></span>
           </button>
-          <p class="text-xs leading-relaxed text-smoke">Votre table est confirmée dès que vous cliquez. Le restaurant reçoit aussi un SMS récapitulatif. 50 places par service.</p>
+          <p class="text-xs leading-relaxed text-smoke">Votre table est confirmée dès que vous cliquez. 50 places par service.</p>
         </form>
 
         <div id="resaDone" class="hidden">
@@ -279,7 +279,6 @@
           <p id="resaDoneText" class="mt-3 text-parchment/70"></p>
           <pre id="resaText" class="mt-5 hidden whitespace-pre-wrap border border-brass/20 p-4 font-sans text-sm text-parchment/85"></pre>
           <div class="mt-5 flex flex-wrap gap-3">
-            <button id="resaCopy" class="hidden rounded-full border border-brass/50 px-5 py-2 text-xs uppercase tracking-[0.2em] hover:bg-parchment hover:text-ink">Copier le message</button>
             <button id="resaNew" class="rounded-full border border-brass/50 px-5 py-2 text-xs uppercase tracking-[0.2em] hover:bg-parchment hover:text-ink">Nouvelle réservation</button>
           </div>
         </div>
@@ -443,9 +442,6 @@ document.fonts.ready.then(() => selectTab(1)); selectTab(1)
 addEventListener('resize', () => { const a = [...tabs.querySelectorAll('button')].findIndex(b => b.classList.contains('text-parchment')); if (a >= 0) { const b = tabs.querySelectorAll('button')[a]; line.style.left = b.offsetLeft + 'px'; line.style.width = b.offsetWidth + 'px' } })
 
 // ───────── Réserver ─────────
-// Portable qui reçoit les demandes de réservation (format international)
-const NUMERO_SMS = '+41764277325'
-const NUMERO_SMS_AFFICHE = '076 427 73 25'
 
 const resaForm = document.getElementById('resaForm'), resaErr = document.getElementById('resaError')
 let people = 2, place = 'Peu importe'
@@ -539,34 +535,19 @@ resaForm.addEventListener('submit', async e => {
   }
 
   const dateLong = new Intl.DateTimeFormat('fr-CH', { weekday: 'long', day: 'numeric', month: 'long' }).format(parseDate(date))
-  const body = [
-    `NOUVELLE RÉSERVATION CONFIRMÉE – site web (réf. ${id})`,
-    '',
+  const recap = [
     `Date : ${dateLong}`,
     `Heure : ${heure}`,
     `Personnes : ${people}`,
     `Placement : ${place}`,
-    '',
     `Nom : ${nom}`,
-    `Tél : ${tel}`,
     rem ? `Remarque : ${rem}` : null,
   ].filter(l => l !== null).join('\n')
 
-  const done = document.getElementById('resaDone'), title = document.getElementById('resaDoneTitle'), text = document.getElementById('resaDoneText')
-  const pre = document.getElementById('resaText'), copy = document.getElementById('resaCopy')
-  const mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent)
-
-  resaForm.classList.add('hidden'); done.classList.remove('hidden')
-  if (mobile) {
-    title.textContent = `Table confirmée ! (réf. ${id})`
-    text.textContent = 'Votre application Messages s’ouvre : appuyez sur Envoyer pour prévenir le restaurant. À bientôt Au Vieux Caveau !'
-    location.href = `sms:${NUMERO_SMS}?&body=${encodeURIComponent(body)}`
-  } else {
-    title.textContent = `Table confirmée ! (réf. ${id})`
-    text.textContent = `Votre réservation est enregistrée. Vous pouvez aussi envoyer ce récapitulatif par SMS au ${NUMERO_SMS_AFFICHE}. À bientôt Au Vieux Caveau !`
-    pre.textContent = body; pre.classList.remove('hidden'); copy.classList.remove('hidden')
-    copy.onclick = () => navigator.clipboard.writeText(body).then(() => copy.textContent = 'Copié ✓')
-  }
+  resaForm.classList.add('hidden'); document.getElementById('resaDone').classList.remove('hidden')
+  document.getElementById('resaDoneTitle').textContent = `Table confirmée ! (réf. ${id})`
+  document.getElementById('resaDoneText').textContent = 'Votre réservation est enregistrée. À bientôt Au Vieux Caveau ! Pour modifier ou annuler, appelez le 021 728 27 49.'
+  const pre = document.getElementById('resaText'); pre.textContent = recap; pre.classList.remove('hidden')
 })
 
 document.getElementById('resaNew').addEventListener('click', () => {
@@ -575,7 +556,6 @@ document.getElementById('resaNew').addEventListener('click', () => {
   resaForm.classList.remove('hidden')
   document.getElementById('resaDone').classList.add('hidden')
   document.getElementById('resaText').classList.add('hidden')
-  const c = document.getElementById('resaCopy'); c.classList.add('hidden'); c.textContent = 'Copier le message'
 })
 
 // Avis
