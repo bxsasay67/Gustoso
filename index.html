@@ -214,7 +214,7 @@
       <div class="lg:sticky lg:top-28 lg:self-start">
         <p class="font-fell text-sm tracking-[0.35em] text-ember">Une table pour vous</p>
         <h2 class="mt-4 font-display text-[17vw] font-black uppercase leading-[0.82] tracking-[-0.05em] md:text-[9vw]">Réserver</h2>
-        <p class="mt-6 max-w-md text-parchment/70">Choisissez la date, l’heure et le nombre de personnes : votre réservation est envoyée par SMS au restaurant et votre table est confirmée.</p>
+        <p class="mt-6 max-w-md text-parchment/70">Choisissez la date, l’heure et le nombre de personnes : les places restantes s’affichent en direct et votre table est confirmée immédiatement.</p>
         <p class="mt-8 text-xs uppercase tracking-[0.25em] text-smoke">Vous préférez appeler ?</p>
         <a href="tel:+41217282749" class="mt-1 inline-block font-display text-3xl hover:text-ember" data-cursor="Appeler">021 728 27 49</a>
       </div>
@@ -271,7 +271,7 @@
             <span class="relative z-10">Confirmer ma réservation</span>
             <span class="absolute inset-0 translate-y-full bg-brass transition-transform duration-500 ease-expo group-hover:translate-y-0"></span>
           </button>
-          <p class="text-xs leading-relaxed text-smoke">Votre application Messages s’ouvre avec la réservation déjà rédigée : appuyez sur Envoyer et votre table est confirmée. Jusqu’à 50 personnes.</p>
+          <p class="text-xs leading-relaxed text-smoke">Votre table est confirmée dès que vous cliquez. Le restaurant reçoit aussi un SMS récapitulatif. 50 places par service.</p>
         </form>
 
         <div id="resaDone" class="hidden">
@@ -330,6 +330,12 @@
     </div>
   </div>
   <p class="reveal mt-24 select-none whitespace-nowrap text-center font-fell text-[13.5vw] leading-[0.8] text-ember/90" aria-hidden="true">Au Vieux Caveau</p>
+  <div class="mt-12 flex justify-center">
+    <button id="staffBtn" type="button" data-cursor="Staff" class="inline-flex items-center gap-4 rounded-lg border-2 border-brass/60 px-8 py-4 text-lg uppercase tracking-[0.12em] text-brass transition-colors hover:border-ember hover:text-ember">
+      <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+      Staff only
+    </button>
+  </div>
   <div class="mt-8 flex flex-col justify-between gap-2 border-t border-brass/15 pt-6 text-xs uppercase tracking-[0.2em] text-smoke md:flex-row">
     <span>© 2026 Au Vieux Caveau · Pully</span><span>Fait avec patience</span>
   </div>
@@ -473,15 +479,26 @@ dateInput.value = dateInput.min
 const parseDate = v => { const [y, m, d] = v.split('-').map(Number); return new Date(y, m - 1, d, 12) }
 const dayOf = v => new Intl.DateTimeFormat('fr-CH', { weekday: 'long' }).format(parseDate(v))
 const slotsOf = v => (hours.find(h => h[0] === dayOf(v)) || [null, []])[1]
-function showHours() {
-  const v = dateInput.value
-  document.getElementById('resaHours').textContent = v ? `Ouvert le ${dayOf(v)} : ${slotsOf(v).map(s => s.join('–')).join(' · ')}` : ''
+let placesReq = 0
+async function showHours() {
+  const v = dateInput.value, el = document.getElementById('resaHours')
+  if (!v) { el.textContent = ''; return }
+  el.textContent = `Ouvert le ${dayOf(v)} : ${slotsOf(v).map(s => s.join('–')).join(' · ')}`
+  const n = ++placesReq
+  try {
+    const r = await fetch(`/api/reservations?date=${v}`, { cache: 'no-store' })
+    if (!r.ok || n !== placesReq) return
+    const data = await r.json()
+    el.innerHTML = `Le ${data.jour} : ` + data.services.map(s =>
+      `${s.service} ${s.horaire} — <span class="${s.restantes === 0 ? 'text-ember' : 'text-parchment'}">${s.restantes === 0 ? 'complet' : s.restantes + ' place' + (s.restantes > 1 ? 's' : '')}</span>`
+    ).join(' · ')
+  } catch (e) {}
 }
 dateInput.addEventListener('change', showHours); showHours()
 
 function resaError(msg) { resaErr.textContent = msg; resaErr.classList.remove('hidden') }
 
-resaForm.addEventListener('submit', e => {
+resaForm.addEventListener('submit', async e => {
   e.preventDefault()
   resaErr.classList.add('hidden')
   const f = new FormData(resaForm)
@@ -501,9 +518,29 @@ resaForm.addEventListener('submit', e => {
   if (!nom) return resaError('Indiquez votre nom.')
   if (tel.replace(/\D/g, '').length < 9) return resaError('Indiquez un numéro de téléphone valide.')
 
+  // Enregistre la réservation sur le serveur (vérifie les places restantes)
+  const btn = resaForm.querySelector('button[type=submit] span')
+  const btnLabel = btn.textContent
+  btn.textContent = 'Réservation en cours…'
+  let id
+  try {
+    const r = await fetch('/api/reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reserve', date, heure, personnes: people, placement: place, nom, tel, remarque: rem }),
+    })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) { showHours(); return resaError(data.error || 'Réservation impossible pour le moment. Appelez le 021 728 27 49.') }
+    id = data.id
+  } catch (err) {
+    return resaError('Réservation impossible pour le moment. Appelez le 021 728 27 49.')
+  } finally {
+    btn.textContent = btnLabel
+  }
+
   const dateLong = new Intl.DateTimeFormat('fr-CH', { weekday: 'long', day: 'numeric', month: 'long' }).format(parseDate(date))
   const body = [
-    'NOUVELLE RÉSERVATION CONFIRMÉE – site web',
+    `NOUVELLE RÉSERVATION CONFIRMÉE – site web (réf. ${id})`,
     '',
     `Date : ${dateLong}`,
     `Heure : ${heure}`,
@@ -521,12 +558,12 @@ resaForm.addEventListener('submit', e => {
 
   resaForm.classList.add('hidden'); done.classList.remove('hidden')
   if (mobile) {
-    title.textContent = 'Dernière étape : appuyez sur Envoyer'
-    text.textContent = 'Dès que le SMS est envoyé, votre table est confirmée. À bientôt Au Vieux Caveau !'
+    title.textContent = `Table confirmée ! (réf. ${id})`
+    text.textContent = 'Votre application Messages s’ouvre : appuyez sur Envoyer pour prévenir le restaurant. À bientôt Au Vieux Caveau !'
     location.href = `sms:${NUMERO_SMS}?&body=${encodeURIComponent(body)}`
   } else {
-    title.textContent = 'Presque fini !'
-    text.textContent = `Sur ordinateur, l’envoi de SMS n’est pas possible. Envoyez ce message depuis votre téléphone au ${NUMERO_SMS_AFFICHE} : votre table sera confirmée dès réception.`
+    title.textContent = `Table confirmée ! (réf. ${id})`
+    text.textContent = `Votre réservation est enregistrée. Vous pouvez aussi envoyer ce récapitulatif par SMS au ${NUMERO_SMS_AFFICHE}. À bientôt Au Vieux Caveau !`
     pre.textContent = body; pre.classList.remove('hidden'); copy.classList.remove('hidden')
     copy.onclick = () => navigator.clipboard.writeText(body).then(() => copy.textContent = 'Copié ✓')
   }
@@ -1071,6 +1108,147 @@ function frame() {
   composer.render(dt)
 }
 frame()
+</script>
+
+<!-- ───────────── STAFF : fenêtre de connexion ───────────── -->
+<div id="staffLogin" class="fixed inset-0 z-[130] hidden items-center justify-center bg-ink/80 px-5 backdrop-blur-sm">
+  <form id="staffLoginForm" class="w-full max-w-sm border border-brass/30 bg-cellar p-7">
+    <div class="flex items-center gap-3 text-brass">
+      <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+      <span class="text-sm uppercase tracking-[0.25em]">Staff only</span>
+    </div>
+    <label class="mt-6 block">
+      <span class="text-xs uppercase tracking-[0.25em] text-smoke">Clé de connexion</span>
+      <input id="staffKey" type="password" autocomplete="current-password" required class="mt-1 w-full border-b border-brass/40 bg-transparent py-2 text-lg outline-none focus:border-ember" />
+    </label>
+    <p id="staffLoginErr" class="mt-3 hidden text-sm text-ember"></p>
+    <div class="mt-6 flex gap-3">
+      <button type="button" id="staffLoginCancel" class="flex-1 rounded-full border border-brass/40 py-3 text-xs uppercase tracking-[0.2em] hover:bg-parchment hover:text-ink">Retour</button>
+      <button type="submit" class="flex-1 rounded-full bg-ember py-3 text-xs uppercase tracking-[0.2em] text-ink hover:bg-brass">Entrer</button>
+    </div>
+  </form>
+</div>
+
+<!-- ───────────── STAFF : espace réservations ───────────── -->
+<div id="staffPanel" class="fixed inset-0 z-[125] hidden overflow-y-auto bg-cellar" data-lenis-prevent>
+  <div class="mx-auto max-w-3xl px-5 pb-20 pt-8">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3 text-brass">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>
+        <span class="text-xs uppercase tracking-[0.25em]">Espace staff</span>
+      </div>
+      <button id="staffClose" class="rounded-full border border-brass/40 px-4 py-2 text-xs uppercase tracking-[0.2em] hover:bg-parchment hover:text-ink">Quitter</button>
+    </div>
+    <h2 class="mt-6 font-display text-5xl font-black">Réservations</h2>
+
+    <div class="mt-8 flex flex-wrap items-center gap-2">
+      <button id="sPrev" class="h-10 w-10 rounded-full border border-brass/40 hover:bg-brass hover:text-ink" aria-label="Jour précédent">←</button>
+      <input id="sDate" type="date" class="border-b border-brass/40 bg-transparent px-1 py-2 text-lg outline-none [color-scheme:dark]" />
+      <button id="sNext" class="h-10 w-10 rounded-full border border-brass/40 hover:bg-brass hover:text-ink" aria-label="Jour suivant">→</button>
+      <button id="sToday" class="rounded-full border border-brass/40 px-4 py-2 text-xs uppercase tracking-[0.2em] hover:bg-brass hover:text-ink">Aujourd’hui</button>
+      <button id="sRefresh" class="rounded-full border border-brass/40 px-4 py-2 text-xs uppercase tracking-[0.2em] hover:bg-brass hover:text-ink">Actualiser</button>
+    </div>
+
+    <h3 id="sTitle" class="mt-8 font-display text-3xl italic capitalize"></h3>
+    <div id="sServices" class="mt-4 grid gap-4 sm:grid-cols-2"></div>
+    <div id="sList" class="mt-8"></div>
+    <p id="sMsg" class="mt-6 text-ember"></p>
+  </div>
+</div>
+
+<script>
+;(() => {
+  const $ = id => document.getElementById(id)
+  const ymdZ = d => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich' }).format(d)
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+  const ss = {
+    get() { try { return sessionStorage.getItem('avc-staff') || '' } catch (e) { return '' } },
+    set(v) { try { v ? sessionStorage.setItem('avc-staff', v) : sessionStorage.removeItem('avc-staff') } catch (e) {} },
+  }
+  let key = ss.get()
+
+  async function fetchDay(date, k) {
+    const r = await fetch(`/api/reservations?date=${date}&staff=1`, { headers: { 'x-staff-key': k }, cache: 'no-store' })
+    const data = await r.json().catch(() => ({}))
+    return { ok: r.ok, status: r.status, data }
+  }
+
+  function openLogin() {
+    $('staffLoginErr').classList.add('hidden'); $('staffKey').value = ''
+    $('staffLogin').classList.remove('hidden'); $('staffLogin').classList.add('flex')
+    setTimeout(() => $('staffKey').focus(), 50)
+  }
+  function closeLogin() { $('staffLogin').classList.add('hidden'); $('staffLogin').classList.remove('flex') }
+  function openPanel() {
+    $('staffPanel').classList.remove('hidden'); document.documentElement.style.overflow = 'hidden'
+    if (!$('sDate').value) $('sDate').value = ymdZ(new Date())
+    render()
+  }
+  function closePanel() { $('staffPanel').classList.add('hidden'); document.documentElement.style.overflow = '' }
+
+  document.getElementById('staffBtn').addEventListener('click', () => key ? openPanel() : openLogin())
+  $('staffLoginCancel').onclick = closeLogin
+  $('staffLogin').addEventListener('click', e => { if (e.target.id === 'staffLogin') closeLogin() })
+
+  $('staffLoginForm').addEventListener('submit', async e => {
+    e.preventDefault()
+    const k = $('staffKey').value
+    const err = $('staffLoginErr'); err.classList.add('hidden')
+    try {
+      const { ok, status, data } = await fetchDay(ymdZ(new Date()), k)
+      if (!ok) { err.textContent = status === 401 ? 'Clé incorrecte.' : (data.error || 'Erreur, réessayez.'); err.classList.remove('hidden'); return }
+      key = k; ss.set(k); closeLogin(); openPanel()
+    } catch (x) { err.textContent = 'Connexion impossible. Vérifiez Internet.'; err.classList.remove('hidden') }
+  })
+
+  async function render() {
+    $('sMsg').textContent = ''
+    const date = $('sDate').value
+    const [y, m, d] = date.split('-').map(Number)
+    $('sTitle').textContent = new Intl.DateTimeFormat('fr-CH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(y, m - 1, d, 12))
+    const { ok, status, data } = await fetchDay(date, key)
+    if (!ok) {
+      if (status === 401) { key = ''; ss.set(''); closePanel(); openLogin(); return }
+      $('sMsg').textContent = data.error || 'Erreur'; return
+    }
+    $('sServices').innerHTML = data.services.length ? data.services.map(s => {
+      const pct = Math.min(100, (s.pris / s.capacite) * 100)
+      return `<div class="border border-brass/20 p-4">
+        <p class="text-xs uppercase tracking-[0.25em] text-smoke">${s.service} · ${s.horaire}</p>
+        <p class="mt-1 font-display text-3xl">${s.pris} <span class="text-lg text-smoke">/ ${s.capacite} personnes</span></p>
+        <div class="mt-3 h-1 bg-brass/15"><div class="h-full ${pct >= 100 ? 'bg-ember' : 'bg-brass'}" style="width:${pct}%"></div></div>
+      </div>`
+    }).join('') : '<p class="text-smoke">Fermé ce jour-là.</p>'
+    $('sList').innerHTML = data.reservations.length ? data.reservations.map(r => `
+      <div class="flex flex-wrap items-start gap-4 border-b border-brass/15 py-4">
+        <div class="w-16 font-display text-2xl">${esc(r.heure)}</div>
+        <div class="min-w-0 flex-1">
+          <p class="font-display text-xl">${esc(r.nom)} <span class="text-ember">· ${esc(r.personnes)} pers.</span></p>
+          <p class="text-sm text-smoke">${esc(r.service)} · ${esc(r.placement)} · réf. ${esc(r.id)} · <a class="underline" href="tel:${esc(r.tel)}">${esc(r.tel)}</a></p>
+          ${r.remarque ? `<p class="mt-1 text-sm text-parchment/80">« ${esc(r.remarque)} »</p>` : ''}
+        </div>
+        <button data-id="${esc(r.id)}" class="sCancel rounded-full border border-brass/40 px-4 py-1.5 text-xs uppercase tracking-[0.2em] hover:border-ember hover:bg-ember hover:text-ink">Annuler</button>
+      </div>`).join('') : '<p class="text-smoke">Aucune réservation pour ce jour.</p>'
+  }
+
+  $('sList').addEventListener('click', async e => {
+    const b = e.target.closest('.sCancel'); if (!b) return
+    if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Confirmer ?'; b.classList.add('bg-ember', 'text-ink'); return }
+    b.textContent = '…'
+    const r = await fetch('/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-staff-key': key }, body: JSON.stringify({ action: 'cancel', date: $('sDate').value, id: b.dataset.id }) })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok) $('sMsg').textContent = data.error || 'Erreur'
+    render()
+  })
+
+  const shift = n => { const [y, m, d] = $('sDate').value.split('-').map(Number); $('sDate').value = ymdZ(new Date(Date.UTC(y, m - 1, d + n, 12))); render() }
+  $('sPrev').onclick = () => shift(-1)
+  $('sNext').onclick = () => shift(1)
+  $('sToday').onclick = () => { $('sDate').value = ymdZ(new Date()); render() }
+  $('sRefresh').onclick = render
+  $('sDate').onchange = render
+  $('staffClose').onclick = closePanel
+})()
 </script>
 </body>
 </html>
